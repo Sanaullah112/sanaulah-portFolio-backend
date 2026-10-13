@@ -3,24 +3,95 @@ import nodemailer from 'nodemailer';
 import Contact from '../models/Contact.js';
 
 // ─── Nodemailer transporter ────────────────────────────────────────────────────
-// Uses Gmail App Password (not your normal password).
-// How to get one:
-//   Google Account → Security → 2-Step Verification (must be ON)
-//   → App passwords → generate one → paste in .env as GMAIL_APP_PASSWORD
-const createTransporter = () =>
-  nodemailer.createTransport({
-    // ✅ FIX: Explicit host/port/secure works reliably on Render & Vercel
-    host: 'smtp.gmail.com',
-    port: 465,
-    secure: true,
+const createTransporter = () => {
+  const user = process.env.GMAIL_USER || '';
+  const pass = (process.env.GMAIL_APP_PASSWORD || '').replace(/\s+/g, '');
+  const owner = process.env.OWNER_EMAIL || '';
+
+  // This prints to Render logs every time an email is attempted
+  console.log('📧 SMTP Config Check:');
+  console.log('  GMAIL_USER:', user ? `✅ "${user}"` : '❌ MISSING');
+  console.log('  GMAIL_APP_PASSWORD:', pass.length === 16 ? '✅ 16 chars' : `❌ ${pass.length} chars (must be 16)`);
+  console.log('  OWNER_EMAIL:', owner ? `✅ "${owner}"` : '❌ MISSING');
+
+  return nodemailer.createTransport({
+    service: 'gmail',
     auth: {
-      user: process.env.GMAIL_USER,
-      // ✅ FIX: Strip any whitespace that may sneak in from env vars
-      pass: process.env.GMAIL_APP_PASSWORD
-        ? process.env.GMAIL_APP_PASSWORD.replace(/\s+/g, '')
-        : '',
+      user: user,
+      pass: pass,
     },
   });
+};
+
+// ─── TEST ENDPOINT (remove after debugging) ────────────────────────────────────
+// Hit: GET /api/contact/test-email
+export const testEmail = asyncHandler(async (req, res) => {
+  const user = process.env.GMAIL_USER || '';
+  const pass = (process.env.GMAIL_APP_PASSWORD || '').replace(/\s+/g, '');
+  const owner = process.env.OWNER_EMAIL || '';
+
+  const checks = {
+    GMAIL_USER: user ? 'OK' : 'MISSING',
+    GMAIL_APP_PASSWORD: pass.length === 16 ? 'OK (16 chars)' : `BAD (${pass.length} chars)`,
+    OWNER_EMAIL: owner ? 'OK' : 'MISSING',
+  };
+
+  // If env vars are missing, stop here
+  if (!user || pass.length !== 16 || !owner) {
+    return res.status(400).json({
+      success: false,
+      message: 'Environment variables are not set correctly on Render',
+      checks,
+      fix: 'Go to Render Dashboard → your service → Environment → add the missing variables',
+    });
+  }
+
+  // Try to actually send an email
+  try {
+    const transporter = createTransporter();
+
+    // Verify SMTP connection first
+    await transporter.verify();
+    console.log('✅ SMTP connection verified');
+
+    // Send test email
+    const result = await transporter.sendMail({
+      from: `"Test" <${user}>`,
+      to: owner,
+      subject: '🧪 Test Email from Render',
+      text: 'If you see this, SMTP is working on Render!',
+    });
+
+    console.log('✅ Test email sent:', result.messageId);
+
+    res.status(200).json({
+      success: true,
+      message: 'Test email sent successfully! Check your inbox.',
+      checks,
+      messageId: result.messageId,
+    });
+  } catch (err) {
+    console.error('❌ SMTP Error:', err.message);
+    console.error('❌ Error code:', err.code);
+    console.error('❌ Error response:', err.response);
+
+    res.status(500).json({
+      success: false,
+      message: 'Email failed to send',
+      checks,
+      error: err.message,
+      errorCode: err.code,
+      errorResponse: err.response,
+      commonFixes: [
+        '1. Go to Google Account → Security → 2-Step Verification → make sure it is ON',
+        '2. Go to App Passwords → delete old ones → generate a NEW one',
+        '3. Copy the new 16-char password (no spaces) → paste into Render Environment',
+        '4. Check Gmail inbox for "Critical security alert" and click "Yes, it was me"',
+        '5. Visit https://accounts.google.com/DisplayUnlockCaptcha and click Continue',
+      ],
+    });
+  }
+});
 
 // @desc    Submit contact form → save to DB + send email to owner
 // @route   POST /api/contact
@@ -54,7 +125,7 @@ export const submitContact = asyncHandler(async (req, res) => {
 
   const ownerMailOptions = {
     from: `"Portfolio Contact" <${process.env.GMAIL_USER}>`,
-    to: process.env.OWNER_EMAIL,  // sanaarman033@gmail.com (set in .env)
+    to: process.env.OWNER_EMAIL,
     replyTo: yourEmail,
     subject: `📩 New Contact from ${fullName}`,
     html: `
@@ -95,7 +166,6 @@ export const submitContact = asyncHandler(async (req, res) => {
     `,
   };
 
-  // Auto-reply to the client
   const clientMailOptions = {
     from: `"Sana Arman" <${process.env.GMAIL_USER}>`,
     to: yourEmail,
@@ -120,11 +190,15 @@ export const submitContact = asyncHandler(async (req, res) => {
   };
 
   try {
-    await transporter.sendMail(ownerMailOptions);
-    await transporter.sendMail(clientMailOptions);
+    const ownerResult = await transporter.sendMail(ownerMailOptions);
+    console.log('✅ Owner email sent:', ownerResult.messageId);
+
+    const clientResult = await transporter.sendMail(clientMailOptions);
+    console.log('✅ Client email sent:', clientResult.messageId);
   } catch (emailErr) {
-    // Email failure should not block the API response — message is already saved in DB
-    console.error('Nodemailer error:', emailErr.message);
+    console.error('❌ Nodemailer error:', emailErr.message);
+    console.error('❌ Error code:', emailErr.code);
+    console.error('❌ Error response:', emailErr.response);
   }
 
   res.status(200).json({
