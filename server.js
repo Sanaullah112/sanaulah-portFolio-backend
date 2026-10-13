@@ -25,6 +25,9 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
+// ✅ FIX: Trust Render / Vercel reverse proxy (fixes express-rate-limit error)
+app.set('trust proxy', 1);
+
 // Core middleware
 app.use(cors({ origin: process.env.CLIENT_URL || '*', credentials: true }));
 app.use(express.json());
@@ -55,3 +58,6 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
 });
+
+// ✅ Needed for Vercel serverless — harmless on Render
+export default app;

@@ -9,10 +9,16 @@ import Contact from '../models/Contact.js';
 //   → App passwords → generate one → paste in .env as GMAIL_APP_PASSWORD
 const createTransporter = () =>
   nodemailer.createTransport({
-    service: 'gmail',
+    // ✅ FIX: Explicit host/port/secure works reliably on Render & Vercel
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,
     auth: {
-      user: process.env.GMAIL_USER,        // your Gmail address (sender)
-      pass: process.env.GMAIL_APP_PASSWORD, // 16-char App Password, NOT your Gmail password
+      user: process.env.GMAIL_USER,
+      // ✅ FIX: Strip any whitespace that may sneak in from env vars
+      pass: process.env.GMAIL_APP_PASSWORD
+        ? process.env.GMAIL_APP_PASSWORD.replace(/\s+/g, '')
+        : '',
     },
   });
 
