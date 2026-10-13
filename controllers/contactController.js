@@ -6,13 +6,6 @@ import Contact from '../models/Contact.js';
 const createTransporter = () => {
   const user = process.env.GMAIL_USER || '';
   const pass = (process.env.GMAIL_APP_PASSWORD || '').replace(/\s+/g, '');
-  const owner = process.env.OWNER_EMAIL || '';
-
-  // This prints to Render logs every time an email is attempted
-  console.log('📧 SMTP Config Check:');
-  console.log('  GMAIL_USER:', user ? `✅ "${user}"` : '❌ MISSING');
-  console.log('  GMAIL_APP_PASSWORD:', pass.length === 16 ? '✅ 16 chars' : `❌ ${pass.length} chars (must be 16)`);
-  console.log('  OWNER_EMAIL:', owner ? `✅ "${owner}"` : '❌ MISSING');
 
   return nodemailer.createTransport({
     service: 'gmail',
@@ -23,38 +16,16 @@ const createTransporter = () => {
   });
 };
 
-// ─── TEST ENDPOINT (remove after debugging) ────────────────────────────────────
-// Hit: GET /api/contact/test-email
+// ─── Test Endpoint ─────────────────────────────────────────────────────────────
 export const testEmail = asyncHandler(async (req, res) => {
   const user = process.env.GMAIL_USER || '';
   const pass = (process.env.GMAIL_APP_PASSWORD || '').replace(/\s+/g, '');
   const owner = process.env.OWNER_EMAIL || '';
 
-  const checks = {
-    GMAIL_USER: user ? 'OK' : 'MISSING',
-    GMAIL_APP_PASSWORD: pass.length === 16 ? 'OK (16 chars)' : `BAD (${pass.length} chars)`,
-    OWNER_EMAIL: owner ? 'OK' : 'MISSING',
-  };
-
-  // If env vars are missing, stop here
-  if (!user || pass.length !== 16 || !owner) {
-    return res.status(400).json({
-      success: false,
-      message: 'Environment variables are not set correctly on Render',
-      checks,
-      fix: 'Go to Render Dashboard → your service → Environment → add the missing variables',
-    });
-  }
-
-  // Try to actually send an email
   try {
     const transporter = createTransporter();
-
-    // Verify SMTP connection first
     await transporter.verify();
-    console.log('✅ SMTP connection verified');
 
-    // Send test email
     const result = await transporter.sendMail({
       from: `"Test" <${user}>`,
       to: owner,
@@ -62,47 +33,36 @@ export const testEmail = asyncHandler(async (req, res) => {
       text: 'If you see this, SMTP is working on Render!',
     });
 
-    console.log('✅ Test email sent:', result.messageId);
-
     res.status(200).json({
       success: true,
       message: 'Test email sent successfully! Check your inbox.',
-      checks,
       messageId: result.messageId,
     });
   } catch (err) {
-    console.error('❌ SMTP Error:', err.message);
-    console.error('❌ Error code:', err.code);
-    console.error('❌ Error response:', err.response);
-
     res.status(500).json({
       success: false,
-      message: 'Email failed to send',
-      checks,
       error: err.message,
-      errorCode: err.code,
-      errorResponse: err.response,
-      commonFixes: [
-        '1. Go to Google Account → Security → 2-Step Verification → make sure it is ON',
-        '2. Go to App Passwords → delete old ones → generate a NEW one',
-        '3. Copy the new 16-char password (no spaces) → paste into Render Environment',
-        '4. Check Gmail inbox for "Critical security alert" and click "Yes, it was me"',
-        '5. Visit https://accounts.google.com/DisplayUnlockCaptcha and click Continue',
-      ],
     });
   }
 });
 
-// @desc    Submit contact form → save to DB + send email to owner
+// @desc    Submit contact form → save to DB + send emails
 // @route   POST /api/contact
 // @access  Public
 export const submitContact = asyncHandler(async (req, res) => {
-  const { fullName, yourEmail, phoneNumber, budget, message } = req.body;
+  console.log('📥 Incoming contact form submission:', req.body);
+
+  // ✅ 1. Support both frontend naming conventions (name/fullName, email/yourEmail)
+  const fullName = req.body.fullName || req.body.name;
+  const yourEmail = req.body.yourEmail || req.body.email;
+  const phoneNumber = req.body.phoneNumber || req.body.phone || '';
+  const budget = req.body.budget || '';
+  const message = req.body.message;
 
   // ── Validation ────────────────────────────────────────────────────────────
   if (!fullName || !yourEmail || !message) {
     res.status(400);
-    throw new Error('Full name, email and message are required');
+    throw new Error('Full name, email, and message are required');
   }
 
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -120,12 +80,17 @@ export const submitContact = asyncHandler(async (req, res) => {
     message,
   });
 
-  // ── Send email to owner ───────────────────────────────────────────────────
-  const transporter = createTransporter();
+  console.log('✅ Message saved to MongoDB with ID:', contact._id);
 
+  // ── Send Emails ───────────────────────────────────────────────────────────
+  const transporter = createTransporter();
+  const senderUser = process.env.GMAIL_USER;
+  const ownerTarget = process.env.OWNER_EMAIL || senderUser;
+
+  // 1. Email to Owner (You)
   const ownerMailOptions = {
-    from: `"Portfolio Contact" <${process.env.GMAIL_USER}>`,
-    to: process.env.OWNER_EMAIL,
+    from: `"Portfolio Contact" <${senderUser}>`,
+    to: ownerTarget,
     replyTo: yourEmail,
     subject: `📩 New Contact from ${fullName}`,
     html: `
@@ -166,8 +131,9 @@ export const submitContact = asyncHandler(async (req, res) => {
     `,
   };
 
+  // 2. Auto-reply to Client
   const clientMailOptions = {
-    from: `"Sana Arman" <${process.env.GMAIL_USER}>`,
+    from: `"Sana Arman" <${senderUser}>`,
     to: yourEmail,
     subject: `✅ Got your message, ${fullName}!`,
     html: `
@@ -189,16 +155,22 @@ export const submitContact = asyncHandler(async (req, res) => {
     `,
   };
 
+  // Send owner notification
   try {
-    const ownerResult = await transporter.sendMail(ownerMailOptions);
-    console.log('✅ Owner email sent:', ownerResult.messageId);
+    const ownerRes = await transporter.sendMail(ownerMailOptions);
+    console.log('✅ Owner email delivered successfully:', ownerRes.messageId);
+  } catch (err) {
+    console.error('❌ Failed to send owner email:', err.message);
+  }
 
-    const clientResult = await transporter.sendMail(clientMailOptions);
-    console.log('✅ Client email sent:', clientResult.messageId);
-  } catch (emailErr) {
-    console.error('❌ Nodemailer error:', emailErr.message);
-    console.error('❌ Error code:', emailErr.code);
-    console.error('❌ Error response:', emailErr.response);
+  // Send client confirmation auto-reply (only if not sending to self)
+  if (yourEmail.toLowerCase() !== senderUser.toLowerCase()) {
+    try {
+      const clientRes = await transporter.sendMail(clientMailOptions);
+      console.log('✅ Client auto-reply delivered successfully:', clientRes.messageId);
+    } catch (err) {
+      console.error('❌ Failed to send client auto-reply:', err.message);
+    }
   }
 
   res.status(200).json({
