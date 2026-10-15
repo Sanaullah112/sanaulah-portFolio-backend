@@ -1,14 +1,18 @@
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
 import { UPLOAD_LIMITS } from '../config/constants.js';
+
+const backendDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const uploadsDir = path.join(backendDir, 'uploads');
 
 const ensureDir = (dir) => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 };
 
 const makeStorage = (folder) => {
-  const dest = path.join('uploads', folder);
+  const dest = path.join(uploadsDir, folder);
   ensureDir(dest);
   return multer.diskStorage({
     destination: (req, file, cb) => cb(null, dest),

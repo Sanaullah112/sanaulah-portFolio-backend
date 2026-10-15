@@ -6,24 +6,35 @@ import mongoose from 'mongoose';
 dotenv.config();
 
 const seedAdmin = async () => {
-  await connectDB();
+  const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+  const password = process.env.ADMIN_PASSWORD;
 
-  const email = process.env.ADMIN_EMAIL || 'admin@example.com';
-  const password = process.env.ADMIN_PASSWORD || 'Admin@123';
-
-  const existing = await Admin.findOne({ email });
-  if (existing) {
-    console.log(`Admin already exists: ${email}`);
-    process.exit(0);
+  if (!email || !password) {
+    throw new Error('Set ADMIN_EMAIL and ADMIN_PASSWORD in the backend environment before seeding.');
+  }
+  if (password.length < 6) {
+    throw new Error('ADMIN_PASSWORD must be at least 6 characters long.');
   }
 
-  await Admin.create({ name: 'Admin', email, password });
-  console.log(`Admin created successfully -> email: ${email} | password: ${password}`);
-  process.exit(0);
+  await connectDB();
+
+  const admin = await Admin.findOne({ email }).select('+password');
+  if (admin) {
+    admin.name = 'Admin';
+    admin.password = password;
+    await admin.save();
+    console.log('Configured admin password reset successfully.');
+  } else {
+    await Admin.create({ name: 'Admin', email, password });
+    console.log('Configured admin account created successfully.');
+  }
 };
 
-seedAdmin().catch((err) => {
-  console.error('Seeding failed:', err.message);
-  mongoose.connection.close();
-  process.exit(1);
-});
+try {
+  await seedAdmin();
+} catch (err) {
+  console.error('Admin setup failed:', err.message);
+  process.exitCode = 1;
+} finally {
+  await mongoose.disconnect();
+}

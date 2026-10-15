@@ -8,12 +8,13 @@ import generateToken from '../utils/generateToken.js';
 export const loginAdmin = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
-  if (!email || !password) {
+  if (typeof email !== 'string' || !email.trim() || typeof password !== 'string' || !password) {
     res.status(400);
     throw new Error('Email and password are required');
   }
 
-  const admin = await Admin.findOne({ email: email.toLowerCase() }).select('+password');
+  const normalizedEmail = email.trim().toLowerCase();
+  const admin = await Admin.findOne({ email: normalizedEmail }).select('+password');
 
   if (!admin || !(await admin.matchPassword(password))) {
     res.status(401);

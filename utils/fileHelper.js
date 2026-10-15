@@ -1,12 +1,31 @@
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+const backendDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const uploadsDir = path.join(backendDir, 'uploads');
 
 /**
  * Builds a publicly accessible URL for an uploaded file.
  */
 export const buildFileUrl = (req, relativePath) => {
-  const base = `${req.protocol}://${req.get('host')}`;
-  return `${base}/${relativePath.replace(/\\/g, '/')}`;
+  const configuredBase = process.env.PUBLIC_API_URL?.trim().replace(/\/+$/, '');
+  const base = configuredBase || `${req.protocol}://${req.get('host')}`;
+  const filePath = path.isAbsolute(relativePath)
+    ? path.relative(uploadsDir, path.resolve(relativePath))
+    : relativePath.replace(/\\/g, '/').replace(/^uploads[\\/]/i, '');
+  const normalizedFilePath = filePath.replace(/\\/g, '/');
+
+  if (
+    !normalizedFilePath ||
+    normalizedFilePath === '..' ||
+    normalizedFilePath.startsWith('../') ||
+    path.isAbsolute(normalizedFilePath)
+  ) {
+    throw new Error('Uploaded file path is outside the uploads directory');
+  }
+
+  return new URL(`uploads/${normalizedFilePath}`, `${base}/`).toString();
 };
 
 /**
@@ -14,7 +33,17 @@ export const buildFileUrl = (req, relativePath) => {
  */
 export const deleteFileIfExists = (filePath) => {
   if (!filePath) return;
-  const fullPath = path.resolve(filePath);
+  const portablePath = filePath.replace(/[\\/]+/g, path.sep);
+  const fullPath = path.isAbsolute(filePath)
+    ? path.resolve(filePath)
+    : path.resolve(backendDir, portablePath);
+  const relativePath = path.relative(uploadsDir, fullPath);
+
+  if (relativePath === '..' || relativePath.startsWith(`..${path.sep}`) || path.isAbsolute(relativePath)) {
+    console.error('Refusing to delete a file outside the uploads directory');
+    return;
+  }
+
   fs.access(fullPath, fs.constants.F_OK, (err) => {
     if (err) return;
     fs.unlink(fullPath, (unlinkErr) => {

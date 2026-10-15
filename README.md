@@ -6,10 +6,33 @@ Express + MongoDB (Mongoose) backend for the Admin Panel frontend. Matches every
 
 ```bash
 npm install
-cp .env.example .env   # edit MONGO_URI, JWT_SECRET, CLIENT_URL, ADMIN_EMAIL/PASSWORD
-npm run seed:admin     # creates the first admin login from .env values
+cp .env.example .env   # set MONGO_URI, JWT_SECRET, CLIENT_URL, ADMIN_EMAIL/PASSWORD
+npm run seed:admin     # creates or resets the configured admin account
 npm run dev            # nodemon, http://localhost:5000
 ```
+
+To sign in, use the exact `ADMIN_EMAIL` and `ADMIN_PASSWORD` values configured in the backend `.env`. Running `npm run seed:admin` updates that account's password to the configured value; keep `ADMIN_PASSWORD` private and use a unique password (at least 6 characters).
+
+## Render and Vercel deployment
+
+- Deploy the Express backend on Render and the Vite frontend on Vercel. Set Vercel's `VITE_API_BASE_URL` to the Render backend URL ending in `/api` (for example, `https://your-backend.onrender.com/api`), then redeploy the frontend. Do not use `localhost` for this production variable. The local URL is kept in `frontend/.env.development`, so it is not baked into production builds.
+- Set Render's `PUBLIC_API_URL` to the backend origin without `/api` (for example, `https://your-backend.onrender.com`) so new image and resume URLs point to the public backend.
+- Multer stores uploads on disk. Configure a Render persistent disk mounted at the backend's `uploads` directory, or uploaded images and the resume can disappear when the service restarts or redeploys. Vercel's serverless filesystem is not suitable for these uploads.
+- Set Render's `CLIENT_URL` to the deployed Vercel site origin and configure `MONGO_URI`, `JWT_SECRET`, and the mail and WhatsApp settings described below.
+
+## Contact email and WhatsApp delivery
+
+Set these environment variables on Render; never put provider credentials in frontend code or commit them:
+
+- `GMAIL_USER`, `GMAIL_APP_PASSWORD`, and `OWNER_EMAIL` for the portfolio notification and visitor confirmation email. Use a Google app password for Gmail SMTP.
+- `WHATSAPP_ACCESS_TOKEN` and `WHATSAPP_PHONE_NUMBER_ID` from your Meta WhatsApp Business app.
+- `WHATSAPP_RECIPIENT_PHONE` to the destination number in international digits (defaults to `923099369195`).
+- `WHATSAPP_TEMPLATE_NAME` and `WHATSAPP_TEMPLATE_LANGUAGE` to an approved Meta message template and its language code. The template must have five body placeholders, in order: visitor name, email, phone, budget, and message.
+- `WHATSAPP_GRAPH_API_VERSION` to a currently supported Graph API version.
+
+For example, the approved template could say: `New portfolio inquiry from {{1}}. Email: {{2}}. Phone: {{3}}. Budget: {{4}}. Message: {{5}}. Please follow up promptly.` Meta may require an approved template when the visitor has not opened a WhatsApp service window. Email delivery is independent: if WhatsApp is not configured or its API call fails, the contact form still saves the message and sends the email, and reports that WhatsApp was unavailable. If email delivery fails, the API reports an error.
+
+The WhatsApp sender phone-number ID must be registered with Meta, and the recipient must be an eligible WhatsApp number different from the sender.
 
 ## Folder Structure
 
