@@ -38,6 +38,15 @@ app.use('/api', apiLimiter);
 // Static file serving for uploaded resume/images
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+// Root endpoint for Render and browser checks
+app.get('/', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'Portfolio API is running',
+    health: '/api/health',
+  });
+});
+
 // Health check
 app.get('/api/health', (req, res) => res.status(200).json({ success: true, message: 'API is running' }));
 

@@ -54,6 +54,8 @@ JWT-based. `POST /api/auth/login` returns `{ token, user }`. Send `Authorization
 
 ## Endpoints
 
+`GET /` returns a simple API status response, and `GET /api/health` is available as the Render health-check path.
+
 | Resource | Method | Path | Body |
 |---|---|---|---|
 | Auth | POST | /api/auth/login | `{ email, password }` |
