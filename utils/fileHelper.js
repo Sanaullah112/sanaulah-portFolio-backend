@@ -8,13 +8,11 @@ const uploadsDir = path.join(backendDir, 'uploads');
 /**
  * Builds a publicly accessible URL for an uploaded file.
  */
-export const buildFileUrl = (req, relativePath) => {
-  const configuredBase = process.env.PUBLIC_API_URL?.trim().replace(/\/+$/, '');
-  const base = configuredBase || `${req.protocol}://${req.get('host')}`;
+export const buildFileUrl = (_req, relativePath) => {
   const filePath = path.isAbsolute(relativePath)
     ? path.relative(uploadsDir, path.resolve(relativePath))
     : relativePath.replace(/\\/g, '/').replace(/^uploads[\\/]/i, '');
-  const normalizedFilePath = filePath.replace(/\\/g, '/');
+  const normalizedFilePath = filePath.replace(/\\/g, '/').replace(/^\/+/, '');
 
   if (
     !normalizedFilePath ||
@@ -25,7 +23,7 @@ export const buildFileUrl = (req, relativePath) => {
     throw new Error('Uploaded file path is outside the uploads directory');
   }
 
-  return new URL(`uploads/${normalizedFilePath}`, `${base}/`).toString();
+  return `/uploads/${normalizedFilePath}`;
 };
 
 /**
