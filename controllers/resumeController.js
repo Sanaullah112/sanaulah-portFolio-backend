@@ -1,6 +1,6 @@
 import asyncHandler from 'express-async-handler';
 import Resume from '../models/Resume.js';
-import { buildFileUrl, deleteFileIfExists } from '../utils/fileHelper.js';
+import { buildFileUrl, deleteFileIfExists, normalizeFileUrl } from '../utils/fileHelper.js';
 
 // @desc    Get current resume
 // @route   GET /api/resume
@@ -11,6 +11,12 @@ export const getResume = asyncHandler(async (req, res) => {
   if (!resume) {
     res.status(404);
     throw new Error('No resume found');
+  }
+
+  const normalizedFileUrl = normalizeFileUrl(resume.fileUrl);
+  if (normalizedFileUrl !== resume.fileUrl) {
+    resume.fileUrl = normalizedFileUrl;
+    await resume.save();
   }
 
   res.status(200).json({ success: true, resume });
@@ -52,6 +58,8 @@ export const updateResume = asyncHandler(async (req, res) => {
     res.status(404);
     throw new Error('Resume not found');
   }
+
+  resume.fileUrl = normalizeFileUrl(resume.fileUrl);
 
   if (req.file) {
     deleteFileIfExists(resume.filePath);

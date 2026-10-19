@@ -26,6 +26,13 @@ export const buildFileUrl = (_req, relativePath) => {
   return `/uploads/${normalizedFilePath}`;
 };
 
+export const normalizeFileUrl = (fileUrl) => {
+  if (typeof fileUrl !== 'string' || !/^https?:\/\//i.test(fileUrl)) return fileUrl;
+
+  const match = fileUrl.match(/^https?:\/\/[^/]+(\/uploads\/[^?#]*)(\?[^#]*)?(#.*)?$/i);
+  return match ? `${match[1]}${match[2] || ''}${match[3] || ''}` : fileUrl;
+};
+
 /**
  * Deletes a file from disk if it exists. Fails silently (logs only).
  */
