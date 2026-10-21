@@ -1,6 +1,15 @@
 import asyncHandler from 'express-async-handler';
 import Testimonial from '../models/Testimonial.js';
-import { buildFileUrl, deleteFileIfExists } from '../utils/fileHelper.js';
+import { buildFileUrl, deleteFileIfExists, normalizeFileUrl } from '../utils/fileHelper.js';
+
+const sanitizeTestimonial = (testimonial) => {
+  if (!testimonial) return testimonial;
+  const t = testimonial.toObject ? testimonial.toObject() : { ...testimonial };
+  if (t.imageUrl) {
+    t.imageUrl = normalizeFileUrl(t.imageUrl);
+  }
+  return t;
+};
 
 // @desc    Get all testimonials (search, pagination)
 // @route   GET /api/testimonials
@@ -27,7 +36,7 @@ export const getTestimonials = asyncHandler(async (req, res) => {
 
   res.status(200).json({
     success: true,
-    data,
+    data: data.map(sanitizeTestimonial),
     page: pageNum,
     totalPages: Math.ceil(totalCount / limitNum) || 1,
     totalCount,
@@ -43,7 +52,7 @@ export const getTestimonialById = asyncHandler(async (req, res) => {
     res.status(404);
     throw new Error('Testimonial not found');
   }
-  res.status(200).json({ success: true, data: testimonial });
+  res.status(200).json({ success: true, data: sanitizeTestimonial(testimonial) });
 });
 
 // @desc    Create testimonial

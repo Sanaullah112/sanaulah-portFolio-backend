@@ -29,14 +29,55 @@ const app = express();
 app.set('trust proxy', 1);
 
 // Core middleware
-app.use(cors({ origin: process.env.CLIENT_URL || '*', credentials: true }));
+// ✅ FIX: Dynamic CORS for localhost, Vercel frontend, and production origins with credentials support
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (curl, mobile, server-to-server)
+      if (!origin) return callback(null, true);
+
+      // Explicitly allow configured CLIENT_URL
+      if (
+        process.env.CLIENT_URL &&
+        (origin === process.env.CLIENT_URL ||
+          origin === process.env.CLIENT_URL.replace(/\/+$/, ''))
+      ) {
+        return callback(null, true);
+      }
+
+      // Always allow local development
+      if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) {
+        return callback(null, true);
+      }
+
+      // Always allow Vercel and Render deployments
+      if (
+        /^https:\/\/.*\.vercel\.app$/i.test(origin) ||
+        /^https:\/\/.*\.onrender\.com$/i.test(origin)
+      ) {
+        return callback(null, true);
+      }
+
+      return callback(null, true);
+    },
+    credentials: true,
+  })
+);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 if (process.env.NODE_ENV !== 'production') app.use(morgan('dev'));
 app.use('/api', apiLimiter);
 
-// Static file serving for uploaded resume/images
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Static file serving for uploaded resume/images with permissive CORS and CORP headers
+app.use(
+  '/uploads',
+  express.static(path.join(__dirname, 'uploads'), {
+    setHeaders: (res) => {
+      res.set('Access-Control-Allow-Origin', '*');
+      res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+    },
+  })
+);
 
 // Root endpoint for Render and browser checks
 app.get('/', (req, res) => {

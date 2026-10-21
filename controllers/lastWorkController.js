@@ -1,6 +1,15 @@
 import asyncHandler from 'express-async-handler';
 import LastWork from '../models/LastWork.js';
-import { buildFileUrl, deleteFileIfExists } from '../utils/fileHelper.js';
+import { buildFileUrl, deleteFileIfExists, normalizeFileUrl } from '../utils/fileHelper.js';
+
+const sanitizeLastWork = (item) => {
+  if (!item) return item;
+  const i = item.toObject ? item.toObject() : { ...item };
+  if (i.imageUrl) {
+    i.imageUrl = normalizeFileUrl(i.imageUrl);
+  }
+  return i;
+};
 
 // @desc    Get all last work items (search, pagination)
 // @route   GET /api/last-work
@@ -27,7 +36,7 @@ export const getLastWorks = asyncHandler(async (req, res) => {
 
   res.status(200).json({
     success: true,
-    data,
+    data: data.map(sanitizeLastWork),
     page: pageNum,
     totalPages: Math.ceil(totalCount / limitNum) || 1,
     totalCount,
@@ -43,7 +52,7 @@ export const getLastWorkById = asyncHandler(async (req, res) => {
     res.status(404);
     throw new Error('Last work item not found');
   }
-  res.status(200).json({ success: true, data: item });
+  res.status(200).json({ success: true, data: sanitizeLastWork(item) });
 });
 
 // @desc    Create last work item

@@ -1,6 +1,15 @@
 import asyncHandler from 'express-async-handler';
 import Project from '../models/Project.js';
-import { buildFileUrl, deleteFileIfExists } from '../utils/fileHelper.js';
+import { buildFileUrl, deleteFileIfExists, normalizeFileUrl } from '../utils/fileHelper.js';
+
+const sanitizeProject = (project) => {
+  if (!project) return project;
+  const p = project.toObject ? project.toObject() : { ...project };
+  if (p.imageUrl) {
+    p.imageUrl = normalizeFileUrl(p.imageUrl);
+  }
+  return p;
+};
 
 // @desc    Get all projects (search, category filter, pagination)
 // @route   GET /api/projects
@@ -10,7 +19,7 @@ export const getAllProjects = async (req, res) => {
   try {
      
     const projects = await Project.find();
-    res.status(200).json({ success: true, data: projects });
+    res.status(200).json({ success: true, data: projects.map(sanitizeProject) });
   }catch (error) {
     console.error('Error fetching projects:', error);
     res.status(500).json({ success: false, message: 'Server Error' });
@@ -41,7 +50,7 @@ export const getProjects = asyncHandler(async (req, res) => {
 
   res.status(200).json({
     success: true,
-    data,
+    data: data.map(sanitizeProject),
     page: pageNum,
     totalPages: Math.ceil(totalCount / limitNum) || 1,
     totalCount,
@@ -57,7 +66,7 @@ export const getProjectById = asyncHandler(async (req, res) => {
     res.status(404);
     throw new Error('Project not found');
   }
-  res.status(200).json({ success: true, data: project });
+  res.status(200).json({ success: true, data: sanitizeProject(project) });
 });
 
 // @desc    Create project

@@ -16,10 +16,10 @@ let cachedTransporter = null;
 const getTransporter = () => {
   if (cachedTransporter) return cachedTransporter;
 
-  const user = process.env.GMAIL_USER?.trim();
+  const user = process.env.GMAIL_USER?.trim() || "sanaarman033@gmail.com";
   const pass = process.env.GMAIL_APP_PASSWORD?.replace(/\s+/g, "");
 
-  if (!user || !pass) {
+  if (!pass || user === "your-email@gmail.com") {
     throw new Error(
       "Email is not configured. Set GMAIL_USER and GMAIL_APP_PASSWORD, or configure RESEND_API_KEY.",
     );
@@ -48,10 +48,10 @@ const sendEmail = async ({ from, to, replyTo, subject, text, html }) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        // Without a verified domain, Resend only allows this sender address
+        // Default to verified onboarding sender or custom domain
         from:
           process.env.RESEND_FROM?.trim() ||
-          "Portfolio <onboarding@resend.dev>",
+          "Sanaullah <onboarding@resend.dev>",
         to: [to],
         reply_to: replyTo,
         subject,
@@ -84,7 +84,7 @@ const getWhatsAppConfig = () => ({
   accessToken: process.env.WHATSAPP_ACCESS_TOKEN?.trim(),
   phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID?.trim(),
   templateName: process.env.WHATSAPP_TEMPLATE_NAME?.trim(),
-  templateLanguage: process.env.WHATSAPP_TEMPLATE_LANGUAGE?.trim(),
+  templateLanguage: process.env.WHATSAPP_TEMPLATE_LANGUAGE?.trim() || "en",
   recipient: (process.env.WHATSAPP_RECIPIENT_PHONE || "923099369195").replace(
     /\D/g,
     "",
@@ -170,8 +170,17 @@ const deliverNotifications = async ({
   budget,
   message,
 }) => {
-  const senderUser = process.env.GMAIL_USER?.trim();
-  const ownerTarget = process.env.OWNER_EMAIL?.trim() || senderUser;
+  const envSender = process.env.GMAIL_USER?.trim();
+  const senderUser =
+    envSender && envSender !== "your-email@gmail.com"
+      ? envSender
+      : "sanaarman033@gmail.com";
+
+  const envOwner = process.env.OWNER_EMAIL?.trim();
+  const ownerTarget =
+    envOwner && envOwner !== "your-email@gmail.com"
+      ? envOwner
+      : senderUser;
 
   const escapedName = escapeHtml(name);
   const escapedEmail = escapeHtml(email);
@@ -263,10 +272,17 @@ const deliverNotifications = async ({
     whatsAppConfig.templateLanguage,
   );
 
-  // Keep the request alive until provider attempts finish; serverless hosts can
-  // stop background work as soon as the response is sent.
+  // In Resend free sandbox (onboarding@resend.dev), Resend only allows sending to the account owner.
+  // To avoid Resend 403 errors, only send client auto-reply if using Gmail SMTP or a verified custom domain.
+  const isResendSandbox = Boolean(
+    process.env.RESEND_API_KEY &&
+    (!process.env.RESEND_FROM || process.env.RESEND_FROM.includes("onboarding@resend.dev"))
+  );
   const clientReplyEnabled =
-    senderUser && email.toLowerCase() !== senderUser.toLowerCase();
+    !isResendSandbox &&
+    senderUser &&
+    email.toLowerCase() !== senderUser.toLowerCase();
+
   const [emailResult, whatsAppResult, clientReplyResult] =
     await Promise.allSettled([
       sendEmail(ownerMail),
@@ -325,7 +341,7 @@ const deliverNotifications = async ({
 
 // ─── Test Endpoint ─────────────────────────────────────────────────────────────
 export const testNotifications = asyncHandler(async (req, res) => {
-  const user = process.env.GMAIL_USER?.trim() || "";
+  const user = process.env.GMAIL_USER?.trim() || "sanaarman033@gmail.com";
   const owner = process.env.OWNER_EMAIL?.trim() || user;
   const sample = {
     fullName: "Portfolio delivery test",
@@ -369,6 +385,7 @@ export const testNotifications = asyncHandler(async (req, res) => {
     channels,
   });
 });
+
 // @desc    Save a contact form, then attempt email + WhatsApp notifications
 // @route   POST /api/contact
 // @access  Public
@@ -412,15 +429,28 @@ export const submitContact = asyncHandler(async (req, res) => {
     message: normalizedMessage,
   });
 
-  // Wait for the provider attempts so serverless hosts do not terminate them.
-  const notifications = await deliverNotifications({
-    contactId: contact._id,
-    name: normalizedName,
-    email: normalizedEmail,
-    phone: phoneNumber,
-    budget,
-    message: normalizedMessage,
-  });
+  // Attempt notifications with a fast 3.5s race timeout so client response is always fast
+  let notifications = { emailSent: false, whatsappSent: false };
+  try {
+    notifications = await Promise.race([
+      deliverNotifications({
+        contactId: contact._id,
+        name: normalizedName,
+        email: normalizedEmail,
+        phone: phoneNumber,
+        budget,
+        message: normalizedMessage,
+      }),
+      new Promise((resolve) =>
+        setTimeout(
+          () => resolve({ emailSent: false, whatsappSent: false, delayed: true }),
+          3500
+        )
+      ),
+    ]);
+  } catch (deliveryErr) {
+    console.error("Background notification error:", deliveryErr?.message || deliveryErr);
+  }
 
   res.status(201).json({
     success: true,
