@@ -22,17 +22,17 @@ To sign in, use the exact `ADMIN_EMAIL` and `ADMIN_PASSWORD` values configured i
 
 ## Contact email and WhatsApp delivery
 
-Set these environment variables on Render; never put provider credentials in frontend code or commit them:
+Set these environment variables in Render's backend service settings; never put provider credentials in frontend code or commit them. Contact form submissions are saved first, then email and WhatsApp notifications are attempted concurrently before the API responds. The response includes `notifications.emailSent` and `notifications.whatsappSent`; a failed notification does not undo the saved contact.
 
-- `GMAIL_USER`, `GMAIL_APP_PASSWORD`, and `OWNER_EMAIL` for the portfolio notification and visitor confirmation email. Use a Google app password for Gmail SMTP.
+- `GMAIL_USER`, `GMAIL_APP_PASSWORD`, and `OWNER_EMAIL` for the portfolio notification and visitor confirmation email. Use a Google app password for Gmail SMTP. Render Free blocks outbound SMTP ports, so configure `RESEND_API_KEY` and a verified `RESEND_FROM` for reliable delivery from a free Render service. The message still arrives at `OWNER_EMAIL` (your Gmail inbox). Paid Render services can use Gmail SMTP.
 - `WHATSAPP_ACCESS_TOKEN` and `WHATSAPP_PHONE_NUMBER_ID` from your Meta WhatsApp Business app.
 - `WHATSAPP_RECIPIENT_PHONE` to the destination number in international digits (defaults to `923099369195`).
 - `WHATSAPP_TEMPLATE_NAME` and `WHATSAPP_TEMPLATE_LANGUAGE` to an approved Meta message template and its language code. The template must have five body placeholders, in order: visitor name, email, phone, budget, and message.
-- `WHATSAPP_GRAPH_API_VERSION` to a currently supported Graph API version.
+- `WHATSAPP_GRAPH_API_VERSION` to a currently supported Graph API version (defaults to `v26.0`).
 
-For example, the approved template could say: `New portfolio inquiry from {{1}}. Email: {{2}}. Phone: {{3}}. Budget: {{4}}. Message: {{5}}. Please follow up promptly.` Meta may require an approved template when the visitor has not opened a WhatsApp service window. Email delivery is independent: if WhatsApp is not configured or its API call fails, the contact form still saves the message and sends the email, and reports that WhatsApp was unavailable. If email delivery fails, the API reports an error.
+For example, the approved template could say: `New portfolio inquiry from {{1}}. Email: {{2}}. Phone: {{3}}. Budget: {{4}}. Message: {{5}}. Please follow up promptly.` Meta may require an approved template when the visitor has not opened a WhatsApp service window. Email delivery is independent: if WhatsApp is not configured or its API call fails, the contact form still saves the message and attempts email delivery. If either provider fails, the saved contact is preserved, the failure is logged, and the API response reports that channel as unsuccessful.
 
-The WhatsApp sender phone-number ID must be registered with Meta, and the recipient must be an eligible WhatsApp number different from the sender.
+The WhatsApp sender phone-number ID must be registered with Meta, and the recipient must be an eligible WhatsApp number different from the sender. Automatic WhatsApp delivery requires a Meta WhatsApp Business Cloud API setup and approved template; a normal personal WhatsApp account or `wa.me` link cannot send a message automatically from the server. Until those values are added in Render, WhatsApp delivery is logged as unavailable while email and message storage continue independently.
 
 ## Folder Structure
 
@@ -86,3 +86,6 @@ JWT-based. `POST /api/auth/login` returns `{ token, user }`. Send `Authorization
 - File uploads are validated server-side too (type + size) in `middleware/uploadMiddleware.js`, in addition to the frontend's own validation.
 - Old files are deleted from disk automatically when a record is replaced or removed.
 - Swap local disk storage for S3/Cloudinary later by only editing `uploadMiddleware.js` and the `imageUrl`/`fileUrl` assignment in controllers — nothing else needs to change.
+
+
+To check provider credentials after deployment, sign in as an admin and send an authenticated `POST /api/contact/test-notifications` request. The response reports email and WhatsApp results separately, and Render logs include failures for real contact submissions. A successful contact response confirms the message was saved; inspect its `notifications` fields or the admin test endpoint to confirm delivery.
