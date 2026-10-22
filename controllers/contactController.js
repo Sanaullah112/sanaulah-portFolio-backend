@@ -244,7 +244,7 @@ const deliverNotifications = async ({
     from: `"Sana Arman" <${senderUser}>`,
     to: email,
     subject: `Got your message, ${name}!`,
-    text: `Hi ${name},\n\nI've received your message and will get back to you as soon as possible — usually within 24 hours.\n\nYour message: "${message}"\n\nTalk soon,\nSana Arman`,
+    text: `Hi ${name},\n\nI've received your message and will get back to you as soon as possible — usually within 24 hours.\n\nYour message: "${message}"\n\nTalk soon,\nSana Ullah`,
     html: `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;border-radius:12px;border:1px solid #e5e5e5;overflow:hidden;">
         <div style="background:#FD853A;padding:24px 32px;">
