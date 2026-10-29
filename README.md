@@ -16,8 +16,8 @@ To sign in, use the exact `ADMIN_EMAIL` and `ADMIN_PASSWORD` values configured i
 ## Render and Vercel deployment
 
 - Deploy the Express backend on Render and the Vite frontend on Vercel. Set Vercel's `VITE_API_BASE_URL` to the Render backend URL ending in `/api` (for example, `https://your-backend.onrender.com/api`), then redeploy the frontend. Do not use `localhost` for this production variable. The local URL is kept in `frontend/.env.development`, so it is not baked into production builds.
-- Set Render's `PUBLIC_API_URL` to the backend origin without `/api` (for example, `https://your-backend.onrender.com`) so new image and resume URLs point to the public backend.
-- Multer stores uploads on disk. Configure a Render persistent disk mounted at the backend's `uploads` directory, or uploaded images and the resume can disappear when the service restarts or redeploys. Vercel's serverless filesystem is not suitable for these uploads.
+- Uploaded image and resume URLs are served by the Render backend. Keep Vercel's `VITE_API_BASE_URL` pointed at that backend URL so the frontend resolves them correctly.
+- Multer stores uploads on disk. Attach a Render persistent disk mounted at `/var/data`, then set the backend's `UPLOADS_DIR` environment variable to `/var/data/uploads`. Without the persistent disk, uploaded images and the resume can disappear when the service restarts or redeploys. Vercel's serverless filesystem is not suitable for these uploads.
 - Set Render's `CLIENT_URL` to the deployed Vercel site origin and configure `MONGO_URI`, `JWT_SECRET`, and the mail and WhatsApp settings described below.
 
 ## Contact email and WhatsApp delivery

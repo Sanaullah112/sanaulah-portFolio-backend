@@ -3,12 +3,17 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const backendDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const uploadsDir = path.join(backendDir, 'uploads');
+
+export const getUploadsDir = () => {
+  const configuredDir = process.env.UPLOADS_DIR?.trim() || 'uploads';
+  return path.resolve(backendDir, configuredDir);
+};
 
 /**
  * Builds a publicly accessible URL for an uploaded file.
  */
 export const buildFileUrl = (_req, relativePath) => {
+  const uploadsDir = getUploadsDir();
   const filePath = path.isAbsolute(relativePath)
     ? path.relative(uploadsDir, path.resolve(relativePath))
     : relativePath.replace(/\\/g, '/').replace(/^uploads[\\/]/i, '');
@@ -38,6 +43,7 @@ export const normalizeFileUrl = (fileUrl) => {
  */
 export const deleteFileIfExists = (filePath) => {
   if (!filePath) return;
+  const uploadsDir = getUploadsDir();
   const portablePath = filePath.replace(/[\\/]+/g, path.sep);
   const fullPath = path.isAbsolute(filePath)
     ? path.resolve(filePath)

@@ -2,12 +2,11 @@ import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import morgan from 'morgan';
-import path from 'path';
-import { fileURLToPath } from 'url';
 
 import connectDB from './config/db.js';
 import { notFound, errorHandler } from './middleware/errorMiddleware.js';
 import { apiLimiter } from './middleware/rateLimiter.js';
+import { getUploadsDir } from './utils/fileHelper.js';
 
 import authRoutes from './routes/authRoutes.js';
 import resumeRoutes from './routes/resumeRoutes.js';
@@ -19,9 +18,6 @@ import contactRoutes from './routes/contactRoutes.js';
 
 dotenv.config();
 connectDB();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const app = express();
 
@@ -71,7 +67,7 @@ app.use('/api', apiLimiter);
 // Static file serving for uploaded resume/images with permissive CORS and CORP headers
 app.use(
   '/uploads',
-  express.static(path.join(__dirname, 'uploads'), {
+  express.static(getUploadsDir(), {
     setHeaders: (res) => {
       res.set('Access-Control-Allow-Origin', '*');
       res.set('Cross-Origin-Resource-Policy', 'cross-origin');
