@@ -1,6 +1,6 @@
 import asyncHandler from 'express-async-handler';
 import Resume from '../models/Resume.js';
-import { buildFileUrl, deleteFileIfExists, normalizeFileUrl } from '../utils/fileHelper.js';
+import { deleteFileIfExists, normalizeFileUrl } from '../utils/fileHelper.js';
 
 // @desc    Get current resume
 // @route   GET /api/resume
@@ -22,11 +22,28 @@ export const getResume = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, resume });
 });
 
+// @desc    Serve the current resume PDF stored in MongoDB
+// @route   GET /api/resume/:id/file
+// @access  Public
+export const getResumeFile = asyncHandler(async (req, res) => {
+  const resume = await Resume.findById(req.params.id).select('+fileData');
+
+  if (!resume || !resume.fileData) {
+    res.status(404);
+    throw new Error('Resume file is unavailable. Please upload the resume again.');
+  }
+
+  res
+    .type('application/pdf')
+    .set('Content-Disposition', 'inline')
+    .send(resume.fileData);
+});
+
 // @desc    Upload a new resume (only one resume kept at a time)
 // @route   POST /api/resume/upload
 // @access  Private
 export const uploadResume = asyncHandler(async (req, res) => {
-  if (!req.file) {
+  if (!req.file?.buffer) {
     res.status(400);
     throw new Error('Please upload a PDF file');
   }
@@ -38,12 +55,14 @@ export const uploadResume = asyncHandler(async (req, res) => {
   }
   await Resume.deleteMany();
 
-  const resume = await Resume.create({
+  const resume = new Resume({
     fileName: req.file.originalname,
-    fileUrl: buildFileUrl(req, req.file.path),
-    filePath: req.file.path,
+    fileUrl: '',
     fileSize: req.file.size,
+    fileData: req.file.buffer,
   });
+  resume.fileUrl = `/api/resume/${resume._id}/file`;
+  await resume.save();
 
   res.status(201).json({ success: true, message: 'Resume uploaded successfully', resume });
 });
@@ -61,12 +80,13 @@ export const updateResume = asyncHandler(async (req, res) => {
 
   resume.fileUrl = normalizeFileUrl(resume.fileUrl);
 
-  if (req.file) {
+  if (req.file?.buffer) {
     deleteFileIfExists(resume.filePath);
     resume.fileName = req.file.originalname;
-    resume.fileUrl = buildFileUrl(req, req.file.path);
-    resume.filePath = req.file.path;
+    resume.fileUrl = `/api/resume/${resume._id}/file`;
+    resume.filePath = '';
     resume.fileSize = req.file.size;
+    resume.fileData = req.file.buffer;
   }
 
   await resume.save();

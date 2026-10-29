@@ -34,7 +34,7 @@ const pdfFileFilter = (req, file, cb) => {
 };
 
 export const uploadResume = multer({
-  storage: makeStorage('resume'),
+  storage: multer.memoryStorage(),
   fileFilter: pdfFileFilter,
   limits: { fileSize: UPLOAD_LIMITS.PDF_MAX_SIZE },
 });

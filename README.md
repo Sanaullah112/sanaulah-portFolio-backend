@@ -16,8 +16,9 @@ To sign in, use the exact `ADMIN_EMAIL` and `ADMIN_PASSWORD` values configured i
 ## Render and Vercel deployment
 
 - Deploy the Express backend on Render and the Vite frontend on Vercel. Set Vercel's `VITE_API_BASE_URL` to the Render backend URL ending in `/api` (for example, `https://your-backend.onrender.com/api`), then redeploy the frontend. Do not use `localhost` for this production variable. The local URL is kept in `frontend/.env.development`, so it is not baked into production builds.
-- Uploaded image and resume URLs are served by the Render backend. Keep Vercel's `VITE_API_BASE_URL` pointed at that backend URL so the frontend resolves them correctly.
-- Multer stores uploads on disk. Attach a Render persistent disk mounted at `/var/data`, then set the backend's `UPLOADS_DIR` environment variable to `/var/data/uploads`. Without the persistent disk, uploaded images and the resume can disappear when the service restarts or redeploys. Vercel's serverless filesystem is not suitable for these uploads.
+- Uploaded image URLs are served by the Render backend. Keep Vercel's `VITE_API_BASE_URL` pointed at that backend URL so the frontend resolves them correctly. Resume PDFs are stored in MongoDB Atlas and served from `/api/resume/:id/file`, so they persist across Render restarts and redeploys.
+- Multer stores image uploads on disk. Attach a Render persistent disk mounted at `/var/data`, then set the backend's `UPLOADS_DIR` environment variable to `/var/data/uploads`. Without the persistent disk, uploaded images can disappear when the service restarts or redeploys. Vercel's serverless filesystem is not suitable for these uploads.
+- Resume records uploaded before database-backed file storage only contain file metadata and a local file path. If an old resume returns 404 after deployment, replace/re-upload it once from the admin panel to store its PDF in MongoDB Atlas.
 - Set Render's `CLIENT_URL` to the deployed Vercel site origin and configure `MONGO_URI`, `JWT_SECRET`, and the mail and WhatsApp settings described below.
 
 ## Contact email and WhatsApp delivery
@@ -44,7 +45,7 @@ middleware/   authMiddleware (JWT), uploadMiddleware (multer), errorMiddleware, 
 routes/       Express routers, one per resource
 utils/        generateToken, fileHelper (URL building + file cleanup), apiResponse
 seed/         seedAdmin.js — creates the first admin account
-uploads/      multer disk storage (resume/, projects/, testimonials/, lastwork/), served at /uploads/...
+uploads/      multer disk storage for images (projects/, testimonials/, lastwork/), served at /uploads/...
 server.js     app entry point
 ```
 
@@ -62,6 +63,7 @@ JWT-based. `POST /api/auth/login` returns `{ token, user }`. Send `Authorization
 | Auth | POST | /api/auth/logout | — |
 | Auth | GET | /api/auth/me | — |
 | Resume | GET | /api/resume | — |
+| Resume | GET | /api/resume/:id/file | — |
 | Resume | POST | /api/resume/upload | `multipart: resume (pdf)` |
 | Resume | PUT | /api/resume/:id | `multipart: resume (pdf)` |
 | Resume | DELETE | /api/resume/:id | — |
