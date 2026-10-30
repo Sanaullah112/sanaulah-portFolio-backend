@@ -1,15 +1,73 @@
 import asyncHandler from 'express-async-handler';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import Project from '../models/Project.js';
-import { buildFileUrl, deleteFileIfExists, normalizeFileUrl } from '../utils/fileHelper.js';
+import { deleteFileIfExists, getUploadsDir } from '../utils/fileHelper.js';
 
 const sanitizeProject = (project) => {
   if (!project) return project;
   const p = project.toObject ? project.toObject() : { ...project };
-  if (p.imageUrl) {
-    p.imageUrl = normalizeFileUrl(p.imageUrl);
-  }
+  p.imageUrl = `/api/projects/${p._id}/image`;
+  delete p.imageData;
   return p;
 };
+
+const readLegacyProjectImage = async (imagePath) => {
+  if (typeof imagePath !== 'string' || !imagePath) return null;
+
+  const match = imagePath.replace(/\\/g, '/').match(
+    /(?:^|\/)uploads\/projects\/([A-Za-z0-9][A-Za-z0-9._-]*\.(?:jpe?g|png|webp|gif))$/i
+  );
+  if (!match) return null;
+
+  const filename = match[1];
+  const candidates = new Set([
+    path.join(getUploadsDir(), 'projects', filename),
+    path.resolve(process.cwd(), 'uploads', 'projects', filename),
+    path.resolve(getUploadsDir(), '..', '..', 'uploads', 'projects', filename),
+  ]);
+
+  for (const candidate of candidates) {
+    try {
+      return await readFile(candidate);
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+  }
+
+  return null;
+};
+
+const getImageMimeType = (project) => {
+  if (project.imageMimeType) return project.imageMimeType;
+  const extension = path.extname(project.imagePath || '').toLowerCase();
+  return {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.webp': 'image/webp',
+    '.gif': 'image/gif',
+  }[extension] || 'application/octet-stream';
+};
+
+export const getProjectImage = asyncHandler(async (req, res) => {
+  const project = await Project.findById(req.params.id).select('+imageData');
+  if (!project) {
+    res.status(404);
+    throw new Error('Project not found');
+  }
+
+  const imageData = project.imageData || await readLegacyProjectImage(project.imagePath);
+  if (!imageData) {
+    res.status(404);
+    throw new Error('Project image is unavailable. Please upload it again from the admin panel.');
+  }
+
+  res
+    .type(getImageMimeType(project))
+    .set('Cache-Control', 'no-store')
+    .send(imageData);
+});
 
 // @desc    Get all projects (search, category filter, pagination)
 // @route   GET /api/projects
@@ -84,7 +142,7 @@ export const createProject = asyncHandler(async (req, res) => {
     throw new Error('Name, category and description are required');
   }
 
-  const project = await Project.create({
+  const project = new Project({
     name,
     category,
     description,
@@ -93,11 +151,15 @@ export const createProject = asyncHandler(async (req, res) => {
     liveUrl,
     featured: featured === 'true' || featured === true,
     displayOrder: Number(displayOrder) || 0,
-    imageUrl: buildFileUrl(req, req.file.path),
-    imagePath: req.file.path,
+    imageUrl: '',
+    imagePath: '',
+    imageData: req.file.buffer,
+    imageMimeType: req.file.mimetype,
   });
+  project.imageUrl = `/api/projects/${project._id}/image`;
+  await project.save();
 
-  res.status(201).json({ success: true, message: 'Project added successfully', data: project });
+  res.status(201).json({ success: true, message: 'Project added successfully', data: sanitizeProject(project) });
 });
 
 // @desc    Update project
@@ -123,15 +185,18 @@ export const updateProject = asyncHandler(async (req, res) => {
   if (featured !== undefined) project.featured = featured === 'true' || featured === true;
   if (displayOrder !== undefined) project.displayOrder = Number(displayOrder);
 
+  const previousImagePath = req.file ? project.imagePath : '';
   if (req.file) {
-    deleteFileIfExists(project.imagePath);
-    project.imageUrl = buildFileUrl(req, req.file.path);
-    project.imagePath = req.file.path;
+    project.imageData = req.file.buffer;
+    project.imageMimeType = req.file.mimetype;
+    project.imagePath = '';
+    project.imageUrl = `/api/projects/${project._id}/image`;
   }
 
   await project.save();
+  if (previousImagePath) deleteFileIfExists(previousImagePath);
 
-  res.status(200).json({ success: true, message: 'Project updated successfully', data: project });
+  res.status(200).json({ success: true, message: 'Project updated successfully', data: sanitizeProject(project) });
 });
 
 // @desc    Delete project

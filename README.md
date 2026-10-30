@@ -16,8 +16,9 @@ To sign in, use the exact `ADMIN_EMAIL` and `ADMIN_PASSWORD` values configured i
 ## Render and Vercel deployment
 
 - Deploy the Express backend on Render and the Vite frontend on Vercel. Set Vercel's `VITE_API_BASE_URL` to the Render backend URL ending in `/api` (for example, `https://your-backend.onrender.com/api`), then redeploy the frontend. Do not use `localhost` for this production variable. The local URL is kept in `frontend/.env.development`, so it is not baked into production builds.
-- Uploaded image URLs are served by the Render backend. Keep Vercel's `VITE_API_BASE_URL` pointed at that backend URL so the frontend resolves them correctly. Resume PDFs are stored in MongoDB Atlas and served from `/api/resume/:id/file`, so they persist across Render restarts and redeploys.
-- Multer stores image uploads on disk. Attach a Render persistent disk mounted at `/var/data`, then set the backend's `UPLOADS_DIR` environment variable to `/var/data/uploads`. Without the persistent disk, uploaded images can disappear when the service restarts or redeploys. Vercel's serverless filesystem is not suitable for these uploads.
+- Project images are stored in MongoDB Atlas and served from `/api/projects/:id/image`, so they persist across Render restarts and redeploys. Keep Vercel's `VITE_API_BASE_URL` pointed at the Render backend URL ending in `/api` so project image URLs resolve correctly.
+- Other uploaded images remain on disk. Attach a Render persistent disk mounted at `/var/data`, then set the backend's `UPLOADS_DIR` environment variable to `/var/data/uploads`; without it, those files can disappear when the service restarts or redeploys. Vercel's serverless filesystem is not suitable for uploads.
+- Existing project records continue to use their disk image when that file is still present. If an old upload has already disappeared from Render, edit that project in the admin panel, select its image again, and save it once to store it in MongoDB Atlas.
 - Resume records uploaded before database-backed file storage only contain file metadata and a local file path. If an old resume returns 404 after deployment, replace/re-upload it once from the admin panel to store its PDF in MongoDB Atlas.
 - Set Render's `CLIENT_URL` to the deployed Vercel site origin and configure `MONGO_URI`, `JWT_SECRET`, and the mail and WhatsApp settings described below.
 
@@ -68,6 +69,7 @@ JWT-based. `POST /api/auth/login` returns `{ token, user }`. Send `Authorization
 | Resume | PUT | /api/resume/:id | `multipart: resume (pdf)` |
 | Resume | DELETE | /api/resume/:id | — |
 | Projects | GET | /api/projects?search=&category=&page=&limit= | — |
+| Projects | GET | /api/projects/:id/image | — |
 | Projects | POST | /api/projects | `multipart: image + name, category, description, technologies, githubUrl, liveUrl, featured, displayOrder` |
 | Projects | PUT | /api/projects/:id | same as create (image optional) |
 | Projects | DELETE | /api/projects/:id | — |
@@ -87,7 +89,7 @@ JWT-based. `POST /api/auth/login` returns `{ token, user }`. Send `Authorization
 - All create/update messages exactly match the voice-feedback / toast strings the admin frontend expects (e.g. "Project added successfully").
 - File uploads are validated server-side too (type + size) in `middleware/uploadMiddleware.js`, in addition to the frontend's own validation.
 - Old files are deleted from disk automatically when a record is replaced or removed.
-- Swap local disk storage for S3/Cloudinary later by only editing `uploadMiddleware.js` and the `imageUrl`/`fileUrl` assignment in controllers — nothing else needs to change.
+- Project image bytes are stored in MongoDB; testimonial and last-work image uploads still use local disk storage.
 
 
 To check provider credentials after deployment, sign in as an admin and send an authenticated `POST /api/contact/test-notifications` request. The response reports email and WhatsApp results separately, and Render logs include failures for real contact submissions. A successful contact response confirms the message was saved; inspect its `notifications` fields or the admin test endpoint to confirm delivery.
