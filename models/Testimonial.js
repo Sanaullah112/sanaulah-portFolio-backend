@@ -9,7 +9,9 @@ const testimonialSchema = new mongoose.Schema(
     rating: { type: Number, required: true, min: 1, max: 5 },
     linkedin: { type: String, default: '' },
     imageUrl: { type: String, required: true },
-    imagePath: { type: String, required: true },
+    imagePath: { type: String, default: '' },
+    imageData: { type: Buffer, select: false },
+    imageMimeType: { type: String, default: '' },
   },
   { timestamps: true }
 );

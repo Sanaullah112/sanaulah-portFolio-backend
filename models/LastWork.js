@@ -7,7 +7,9 @@ const lastWorkSchema = new mongoose.Schema(
     githubLink : { type: String, trim: true },
     description: { type: String, required: true, maxlength: 800 },
     imageUrl: { type: String, required: true },
-    imagePath: { type: String, required: true },
+    imagePath: { type: String, default: '' },
+    imageData: { type: Buffer, select: false },
+    imageMimeType: { type: String, default: '' },
   },
   { timestamps: true }
 );

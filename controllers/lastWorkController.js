@@ -1,15 +1,73 @@
 import asyncHandler from 'express-async-handler';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import LastWork from '../models/LastWork.js';
-import { buildFileUrl, deleteFileIfExists, normalizeFileUrl } from '../utils/fileHelper.js';
+import { deleteFileIfExists, getUploadsDir } from '../utils/fileHelper.js';
 
 const sanitizeLastWork = (item) => {
   if (!item) return item;
   const i = item.toObject ? item.toObject() : { ...item };
-  if (i.imageUrl) {
-    i.imageUrl = normalizeFileUrl(i.imageUrl);
-  }
+  i.imageUrl = `/api/last-work/${i._id}/image`;
+  delete i.imageData;
   return i;
 };
+
+const readLegacyImage = async (imagePath) => {
+  if (typeof imagePath !== 'string' || !imagePath) return null;
+
+  const match = imagePath.replace(/\\/g, '/').match(
+    /(?:^|\/)lastwork\/([A-Za-z0-9][A-Za-z0-9._-]*\.(?:jpe?g|png|webp|gif))$/i
+  );
+  if (!match) return null;
+
+  const filename = match[1];
+  const candidates = new Set([
+    path.join(getUploadsDir(), 'lastwork', filename),
+    path.resolve(process.cwd(), 'uploads', 'lastwork', filename),
+    path.resolve(getUploadsDir(), '..', '..', 'uploads', 'lastwork', filename),
+  ]);
+
+  for (const candidate of candidates) {
+    try {
+      return await readFile(candidate);
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+  }
+
+  return null;
+};
+
+const getImageMimeType = (item) => {
+  if (item.imageMimeType) return item.imageMimeType;
+  const extension = path.extname(item.imagePath || '').toLowerCase();
+  return {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.webp': 'image/webp',
+    '.gif': 'image/gif',
+  }[extension] || 'application/octet-stream';
+};
+
+export const getLastWorkImage = asyncHandler(async (req, res) => {
+  const item = await LastWork.findById(req.params.id).select('+imageData');
+  if (!item) {
+    res.status(404);
+    throw new Error('Last work item not found');
+  }
+
+  const imageData = item.imageData || await readLegacyImage(item.imagePath);
+  if (!imageData) {
+    res.status(404);
+    throw new Error('Last work image is unavailable. Please upload it again from the admin panel.');
+  }
+
+  res
+    .type(getImageMimeType(item))
+    .set('Cache-Control', 'no-store')
+    .send(imageData);
+});
 
 // @desc    Get all last work items (search, pagination)
 // @route   GET /api/last-work
@@ -70,16 +128,20 @@ export const createLastWork = asyncHandler(async (req, res) => {
     throw new Error('Title, category and description are required');
   }
 
-  const item = await LastWork.create({
+  const item = new LastWork({
     title,
     category,
     description,
     githubLink,
-    imageUrl: buildFileUrl(req, req.file.path),
-    imagePath: req.file.path,
+    imageUrl: '',
+    imagePath: '',
+    imageData: req.file.buffer,
+    imageMimeType: req.file.mimetype,
   });
+  item.imageUrl = `/api/last-work/${item._id}/image`;
+  await item.save();
 
-  res.status(201).json({ success: true, message: 'Last work added successfully', data: item });
+  res.status(201).json({ success: true, message: 'Last work added successfully', data: sanitizeLastWork(item) });
 });
 
 // @desc    Update last work item
@@ -99,15 +161,18 @@ export const updateLastWork = asyncHandler(async (req, res) => {
   if (description) item.description = description;
   if (githubLink) item.githubLink = githubLink;
 
+  const previousImagePath = req.file ? item.imagePath : '';
   if (req.file) {
-    deleteFileIfExists(item.imagePath);
-    item.imageUrl = buildFileUrl(req, req.file.path);
-    item.imagePath = req.file.path;
+    item.imageData = req.file.buffer;
+    item.imageMimeType = req.file.mimetype;
+    item.imagePath = '';
+    item.imageUrl = `/api/last-work/${item._id}/image`;
   }
 
   await item.save();
+  if (previousImagePath) deleteFileIfExists(previousImagePath);
 
-  res.status(200).json({ success: true, message: 'Last work updated successfully', data: item });
+  res.status(200).json({ success: true, message: 'Last work updated successfully', data: sanitizeLastWork(item) });
 });
 
 // @desc    Delete last work item

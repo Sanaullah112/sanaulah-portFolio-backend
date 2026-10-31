@@ -46,13 +46,13 @@ export const uploadProjectImage = multer({
 });
 
 export const uploadTestimonialImage = multer({
-  storage: makeStorage('testimonials'),
+  storage: multer.memoryStorage(),
   fileFilter: imageFileFilter,
   limits: { fileSize: UPLOAD_LIMITS.IMAGE_MAX_SIZE },
 });
 
 export const uploadLastWorkImage = multer({
-  storage: makeStorage('lastwork'),
+  storage: multer.memoryStorage(),
   fileFilter: imageFileFilter,
   limits: { fileSize: UPLOAD_LIMITS.IMAGE_MAX_SIZE },
 });
